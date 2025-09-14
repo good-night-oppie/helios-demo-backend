@@ -18,10 +18,9 @@ const winston = require('winston');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 
-// Import Helios integration modules
-const HeliosEngine = require('./lib/helios-engine');
-const PerformanceAnalytics = require('./lib/performance-analytics');
-const UniverseManager = require('./lib/universe-manager');
+// Import Real Helios integration modules - replacing all mock implementations
+const RealHeliosEngine = require('./lib/real-helios/real-helios-engine');
+const RealPerformanceAnalytics = require('./lib/real-helios/real-performance-analytics');
 
 // Configuration
 const PORT = process.env.PORT || 8080;
@@ -112,15 +111,44 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize Helios Engine
-const heliosEngine = new HeliosEngine({
+// Initialize Real Helios Engine with packaged CLI
+const heliosEngine = new RealHeliosEngine({
+  heliosCliPath: path.join(__dirname, 'bin/helios-cli'),
   maxUniverses: 10000,
   performanceTracking: true,
   realTimeMetrics: true
 });
 
-const performanceAnalytics = new PerformanceAnalytics();
-const universeManager = new UniverseManager(heliosEngine);
+const performanceAnalytics = new RealPerformanceAnalytics(heliosEngine);
+
+// Simple universe management using real Helios engine
+const universeManager = {
+  async getStatistics() {
+    return await heliosEngine.getPerformanceAnalytics();
+  },
+  async createUniverses(count, config) {
+    const results = [];
+    for (let i = 0; i < count; i++) {
+      const result = await heliosEngine.createParallelUniverse({
+        ...config,
+        universeIndex: i
+      });
+      results.push(result);
+    }
+    return results;
+  },
+  async getUniverse(id) {
+    const snapshots = heliosEngine.getAllSnapshots();
+    return snapshots.find(s => s.id === id || s.universeId === id);
+  },
+  async performOperation(id, operation, params) {
+    return await heliosEngine.createDemoState({
+      operation,
+      params,
+      targetUniverse: id
+    });
+  }
+};
 
 // Global metrics
 const metrics = {
